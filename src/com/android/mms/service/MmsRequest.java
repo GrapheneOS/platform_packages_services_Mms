@@ -103,8 +103,9 @@ public abstract class MmsRequest {
     protected RequestManager mRequestManager;
     // The SIM id
     protected int mSubId;
+    protected final int mCallingUser;
     // The creator app
-    protected String mCreator;
+    protected final String mCreatorPkg;
     // MMS config
     protected Bundle mMmsConfig;
     // Context used to get TelephonyManager.
@@ -160,13 +161,14 @@ public abstract class MmsRequest {
         }
     }
 
-    public MmsRequest(RequestManager requestManager, int subId, String creator,
-            Bundle mmsConfig, Context context, long messageId, MmsStats mmsStats,
-            TelephonyManager telephonyManager) {
+    public MmsRequest(RequestManager requestManager, int subId, int callingUser, String creator,
+                      Bundle mmsConfig, Context context, long messageId, MmsStats mmsStats,
+                      TelephonyManager telephonyManager) {
         currentState = MmsRequestState.Created;
         mRequestManager = requestManager;
         mSubId = subId;
-        mCreator = creator;
+        mCallingUser = callingUser;
+        mCreatorPkg = creator;
         mMmsConfig = mmsConfig;
         mContext = context;
         mMessageId = messageId;
