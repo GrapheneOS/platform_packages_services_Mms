@@ -61,10 +61,10 @@ public class DownloadRequest extends MmsRequest {
     private final Uri mContentUri;
 
     public DownloadRequest(RequestManager manager, int subId, String locationUrl,
-            Uri contentUri, PendingIntent downloadedIntent, String creator,
+            Uri contentUri, PendingIntent downloadedIntent, int callingUser, String creator,
             Bundle configOverrides, Context context, long messageId, MmsStats mmsStats,
             TelephonyManager telephonyManager) {
-        super(manager, subId, creator, configOverrides, context, messageId, mmsStats,
+        super(manager, subId, callingUser, creator, configOverrides, context, messageId, mmsStats,
                 telephonyManager);
         mLocationUrl = locationUrl;
         mDownloadedIntent = downloadedIntent;
@@ -168,8 +168,8 @@ public class DownloadRequest extends MmsRequest {
             values.put(Telephony.Mms.DATE, System.currentTimeMillis() / 1000L);
             values.put(Telephony.Mms.READ, 0);
             values.put(Telephony.Mms.SEEN, 0);
-            if (!TextUtils.isEmpty(mCreator)) {
-                values.put(Telephony.Mms.CREATOR, mCreator);
+            if (!TextUtils.isEmpty(mCreatorPkg)) {
+                values.put(Telephony.Mms.CREATOR, mCreatorPkg);
             }
             values.put(Telephony.Mms.SUBSCRIPTION_ID, mSubId);
             if (SqliteWrapper.update(
