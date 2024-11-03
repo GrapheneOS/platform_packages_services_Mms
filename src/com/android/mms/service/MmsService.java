@@ -54,6 +54,7 @@ import android.text.TextUtils;
 import android.util.EventLog;
 import android.util.SparseArray;
 
+import com.android.internal.telephony.CallingPackage;
 import com.android.internal.telephony.IMms;
 import com.android.internal.telephony.flags.Flags;
 import com.android.mms.service.metrics.MmsMetricsCollector;
@@ -214,15 +215,16 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
 
     private IMms.Stub mStub = new IMms.Stub() {
         @Override
-        public void sendMessage(int subId, String callingPkg, Uri contentUri,
+        public void sendMessage(int subId, String callingUidAndPkg, Uri contentUri,
                 String locationUrl, Bundle configOverrides, PendingIntent sentIntent,
                 long messageId, String attributionTag) {
             LogUtil.d("sendMessage " + formatCrossStackMessageId(messageId));
             enforceSystemUid();
+            CallingPackage callingPkg = CallingPackage.parse(callingUidAndPkg);
 
             MmsStats mmsStats = new MmsStats(MmsService.this,
                     mMmsMetricsCollector.getAtomsStorage(), subId, getTelephonyManager(subId),
-                    callingPkg, false);
+                    callingPkg.packageName(), false);
 
             // Make sure the subId is correct
             if (!SubscriptionManager.isValidSubscriptionId(subId)) {
@@ -286,7 +288,7 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
                 // ENABLE_MMS_DATA_REQUEST_REASON_OUTGOING_MMS is set for only SendReq case, since
                 // AcknowledgeInd and NotifyRespInd are parts of downloading sequence.
                 // TODO: Should consider ReadRecInd(Read Report)?
-                sendSettingsIntentForFailedMms(!isRawPduSendReq(contentUri), subId);
+                sendSettingsIntentForFailedMms(!isRawPduSendReq(contentUri, callingPkg), subId);
 
                 int resultCode = Flags.mmsDisabledError() ? SmsManager.MMS_ERROR_DATA_DISABLED
                         : SmsManager.MMS_ERROR_NO_DATA_NETWORK;
@@ -298,7 +300,7 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
         }
 
         @Override
-        public void downloadMessage(int subId, String callingPkg, String locationUrl,
+        public void downloadMessage(int subId, String callingUidAndPkg, String locationUrl,
                 Uri contentUri, Bundle configOverrides, PendingIntent downloadedIntent,
                 long messageId, String attributionTag) {
             // If the subId is no longer active it could be caused by an MVNO using multiple
@@ -309,9 +311,11 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
 
             enforceSystemUid();
 
+            CallingPackage callingPkg = CallingPackage.parse(callingUidAndPkg);
+
             MmsStats mmsStats = new MmsStats(MmsService.this,
                     mMmsMetricsCollector.getAtomsStorage(), subId, getTelephonyManager(subId),
-                    callingPkg, true);
+                    callingPkg.packageName(), true);
 
             // Make sure the subId is correct
             if (!SubscriptionManager.isValidSubscriptionId(subId)) {
@@ -441,10 +445,11 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
         }
 
         @Override
-        public Uri importMultimediaMessage(String callingPkg, Uri contentUri,
+        public Uri importMultimediaMessage(String callingUidAndPkg, Uri contentUri,
                 String messageId, long timestampSecs, boolean seen, boolean read) {
             LogUtil.d("importMultimediaMessage");
             enforceSystemUid();
+            CallingPackage callingPkg = CallingPackage.parse(callingUidAndPkg);
             return importMms(contentUri, messageId, timestampSecs, seen, read, callingPkg);
         }
 
@@ -535,10 +540,11 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
         }
 
         @Override
-        public Uri addMultimediaMessageDraft(String callingPkg, Uri contentUri)
+        public Uri addMultimediaMessageDraft(String callingUidAndPkg, Uri contentUri)
                 throws RemoteException {
             LogUtil.d("addMultimediaMessageDraft");
             enforceSystemUid();
+            CallingPackage callingPkg = CallingPackage.parse(callingUidAndPkg);
             return addMmsDraft(contentUri, callingPkg);
         }
 
@@ -588,12 +594,12 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
             }
         }
 
-        private boolean isRawPduSendReq(Uri contentUri) {
+        private boolean isRawPduSendReq(Uri contentUri, CallingPackage caller) {
             // X-Mms-Message-Type is at the beginning of the message headers always. 1st byte is
             // MMS-filed-name and 2nd byte is MMS-value for X-Mms-Message-Type field.
             // See OMA-TS-MMS_ENC-V1_3-20110913-A, 7. Binary Encoding of ProtocolData Units
             byte[] pduData = new byte[2];
-            int bytesRead = readPduBytesFromContentUri(contentUri, pduData);
+            int bytesRead = readPduBytesFromContentUri(contentUri, pduData, caller);
 
             // Return true for MESSAGE_TYPE_SEND_REQ only. Otherwise false even wrong PDU case.
             if (bytesRead == 2
@@ -805,8 +811,8 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
     }
 
     private Uri importMms(Uri contentUri, String messageId, long timestampSecs,
-            boolean seen, boolean read, String creator) {
-        byte[] pduData = readPduFromContentUri(contentUri, MAX_MMS_FILE_SIZE);
+            boolean seen, boolean read, CallingPackage caller) {
+        byte[] pduData = readPduFromContentUri(contentUri, MAX_MMS_FILE_SIZE, caller);
         if (pduData == null || pduData.length < 1) {
             LogUtil.e("importMessage: empty PDU");
             return null;
@@ -854,9 +860,7 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
             }
             values.put(Telephony.Mms.READ, seen ? 1 : 0);
             values.put(Telephony.Mms.SEEN, read ? 1 : 0);
-            if (!TextUtils.isEmpty(creator)) {
-                values.put(Telephony.Mms.CREATOR, creator);
-            }
+            values.put(Telephony.Mms.CREATOR, caller.packageName());
             if (SqliteWrapper.update(this, getContentResolver(), uri, values,
                     null/*where*/, null/*selectionArg*/) != 1) {
                 LogUtil.e("importMessage: failed to update message");
@@ -979,8 +983,8 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
         return null;
     }
 
-    private Uri addMmsDraft(Uri contentUri, String creator) {
-        byte[] pduData = readPduFromContentUri(contentUri, MAX_MMS_FILE_SIZE);
+    private Uri addMmsDraft(Uri contentUri, CallingPackage caller) {
+        byte[] pduData = readPduFromContentUri(contentUri, MAX_MMS_FILE_SIZE, caller);
         if (pduData == null || pduData.length < 1) {
             LogUtil.e("addMmsDraft: empty PDU");
             return null;
@@ -1013,9 +1017,7 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
             final ContentValues values = new ContentValues(3);
             values.put(Telephony.Mms.READ, 1);
             values.put(Telephony.Mms.SEEN, 1);
-            if (!TextUtils.isEmpty(creator)) {
-                values.put(Telephony.Mms.CREATOR, creator);
-            }
+            values.put(Telephony.Mms.CREATOR, caller.packageName());
             if (SqliteWrapper.update(this, getContentResolver(), uri, values,
                     null/*where*/, null/*selectionArg*/) != 1) {
                 LogUtil.e("addMmsDraft: failed to update message");
@@ -1070,10 +1072,10 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
      * @param maxSize    maximum number of bytes to read.
      * @return pdu bytes if succeeded else null.
      */
-    public byte[] readPduFromContentUri(final Uri contentUri, final int maxSize) {
+    public byte[] readPduFromContentUri(final Uri contentUri, final int maxSize, final CallingPackage caller) {
         // Request one extra byte to make sure file not bigger than maxSize
         byte[] pduData = new byte[maxSize + 1];
-        int bytesRead = readPduBytesFromContentUri(contentUri, pduData);
+        int bytesRead = readPduBytesFromContentUri(contentUri, pduData, caller);
         if (bytesRead <= 0) {
             return null;
         }
@@ -1091,14 +1093,15 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
      * @param pduData    the buffer into which the data is read.
      * @return the total number of bytes read into the pduData.
      */
-    public int readPduBytesFromContentUri(final Uri contentUri, byte[] pduData) {
+    public int readPduBytesFromContentUri(final Uri contentUri, final byte[] pduData, final CallingPackage caller) {
         if (contentUri == null) {
             LogUtil.e("Uri is null");
             return 0;
         }
         int contentUriUserID = ContentProvider.getUserIdFromUri(contentUri, UserHandle.myUserId());
-        if (UserHandle.myUserId() != contentUriUserID) {
-            LogUtil.e("Uri is invalid");
+        if (caller.userId() != contentUriUserID) {
+            LogUtil.e("readPduBytesFromContentUri: uri userId mismatch: expected "
+                    + caller.userId() + ", got " + contentUriUserID + "; uri: " + contentUri);
             return 0;
         }
         Callable<Integer> copyPduToArray = new Callable<Integer>() {

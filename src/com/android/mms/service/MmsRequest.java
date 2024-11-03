@@ -42,6 +42,7 @@ import android.util.SparseArray;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.telephony.CallingPackage;
 import com.android.internal.telephony.flags.Flags;
 import com.android.mms.service.exception.ApnException;
 import com.android.mms.service.exception.MmsHttpException;
@@ -86,7 +87,7 @@ public abstract class MmsRequest {
          * @param maxSize maximum number of bytes to read
          * @return read pdu (else null in case of error or too big)
          */
-        public byte[] readPduFromContentUri(final Uri contentUri, final int maxSize);
+        public byte[] readPduFromContentUri(final Uri contentUri, final int maxSize, CallingPackage caller);
 
         /**
          * Write pdu to supplied content uri
@@ -102,7 +103,7 @@ public abstract class MmsRequest {
     // The SIM id
     protected int mSubId;
     // The creator app
-    protected String mCreator;
+    protected final CallingPackage mCreator;
     // MMS config
     protected Bundle mMmsConfig;
     // Context used to get TelephonyManager.
@@ -158,7 +159,7 @@ public abstract class MmsRequest {
         }
     }
 
-    public MmsRequest(RequestManager requestManager, int subId, String creator,
+    public MmsRequest(RequestManager requestManager, int subId, CallingPackage creator,
             Bundle mmsConfig, Context context, long messageId, MmsStats mmsStats,
             TelephonyManager telephonyManager) {
         currentState = MmsRequestState.Created;
