@@ -1179,7 +1179,7 @@ public class MmsService extends Service implements MmsRequest.RequestManager {
         int contentUriUserID = ContentProvider.getUserIdFromUri(contentUri, UserHandle.myUserId());
         if (callingUser != contentUriUserID) {
             LogUtil.e("Uri belongs to a different user. contentUriUserId is: " + contentUriUserID
-                    + "and calling User ID is:" + callingUser);
+                    + "and calling User ID is:" + callingUser + "; uri: " + contentUri);
             return 0;
         }
         Callable<Integer> copyPduToArray = new Callable<Integer>() {
