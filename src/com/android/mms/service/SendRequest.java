@@ -36,6 +36,7 @@ import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.telephony.CallingPackage;
 import com.android.internal.telephony.SmsApplication;
 import com.android.internal.telephony.SmsNumberUtils;
 import com.android.mms.service.exception.MmsHttpException;
@@ -63,7 +64,7 @@ public class SendRequest extends MmsRequest {
     private final PendingIntent mSentIntent;
 
     public SendRequest(RequestManager manager, int subId, Uri contentUri, String locationUrl,
-            PendingIntent sentIntent, String creator, Bundle configOverrides, Context context,
+            PendingIntent sentIntent, CallingPackage creator, Bundle configOverrides, Context context,
             long messageId, MmsStats mmsStats, TelephonyManager telephonyManager) {
         super(manager, subId, creator, configOverrides, context, messageId, mmsStats,
                 telephonyManager);
@@ -180,18 +181,7 @@ public class SendRequest extends MmsRequest {
     protected Uri persistIfRequired(Context context, int result, byte[] response) {
         final String requestId = getRequestId();
 
-        SubscriptionManager subManager = context.getSystemService(SubscriptionManager.class);
-        UserHandle userHandle = null;
-        long identity = Binder.clearCallingIdentity();
-        try {
-            if ((subManager != null) && (subManager.isActiveSubscriptionId(mSubId))) {
-                userHandle = subManager.getSubscriptionUserHandle(mSubId);
-            }
-        } finally {
-            Binder.restoreCallingIdentity(identity);
-        }
-
-        if (!SmsApplication.shouldWriteMessageForPackageAsUser(mCreator, context, userHandle)) {
+        if (!SmsApplication.shouldWriteMessageForPackageAsUser(mCreator.packageName(), context, mCreator.userHandle())) {
             return null;
         }
 
@@ -202,7 +192,7 @@ public class SendRequest extends MmsRequest {
                     + MmsService.formatCrossStackMessageId(mMessageId));
             return null;
         }
-        identity = Binder.clearCallingIdentity();
+        final long identity = Binder.clearCallingIdentity();
         try {
             final boolean supportContentDisposition =
                     mMmsConfig.getBoolean(SmsManager.MMS_CONFIG_SUPPORT_MMS_CONTENT_DISPOSITION);
@@ -259,9 +249,7 @@ public class SendRequest extends MmsRequest {
             values.put(Telephony.Mms.DATE, System.currentTimeMillis() / 1000L);
             values.put(Telephony.Mms.READ, 1);
             values.put(Telephony.Mms.SEEN, 1);
-            if (!TextUtils.isEmpty(mCreator)) {
-                values.put(Telephony.Mms.CREATOR, mCreator);
-            }
+            values.put(Telephony.Mms.CREATOR, mCreator.packageName());
             values.put(Telephony.Mms.SUBSCRIPTION_ID, mSubId);
             if (SqliteWrapper.update(context, context.getContentResolver(), messageUri, values,
                     null/*where*/, null/*selectionArg*/) != 1) {
@@ -368,7 +356,7 @@ public class SendRequest extends MmsRequest {
             return true;
         }
         final int bytesTobeRead = mMmsConfig.getInt(SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE);
-        mPduData = mRequestManager.readPduFromContentUri(mPduUri, bytesTobeRead);
+        mPduData = mRequestManager.readPduFromContentUri(mPduUri, bytesTobeRead, mCreator);
         return (mPduData != null);
     }
 

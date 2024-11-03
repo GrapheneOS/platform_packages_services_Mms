@@ -38,6 +38,7 @@ import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 
+import com.android.internal.telephony.CallingPackage;
 import com.android.mms.service.exception.MmsHttpException;
 import com.android.mms.service.metrics.MmsStats;
 
@@ -61,7 +62,7 @@ public class DownloadRequest extends MmsRequest {
     private final Uri mContentUri;
 
     public DownloadRequest(RequestManager manager, int subId, String locationUrl,
-            Uri contentUri, PendingIntent downloadedIntent, String creator,
+            Uri contentUri, PendingIntent downloadedIntent, CallingPackage creator,
             Bundle configOverrides, Context context, long messageId, MmsStats mmsStats,
             TelephonyManager telephonyManager) {
         super(manager, subId, creator, configOverrides, context, messageId, mmsStats,
@@ -168,9 +169,7 @@ public class DownloadRequest extends MmsRequest {
             values.put(Telephony.Mms.DATE, System.currentTimeMillis() / 1000L);
             values.put(Telephony.Mms.READ, 0);
             values.put(Telephony.Mms.SEEN, 0);
-            if (!TextUtils.isEmpty(mCreator)) {
-                values.put(Telephony.Mms.CREATOR, mCreator);
-            }
+            values.put(Telephony.Mms.CREATOR, mCreator.packageName());
             values.put(Telephony.Mms.SUBSCRIPTION_ID, mSubId);
             if (SqliteWrapper.update(
                     context,
