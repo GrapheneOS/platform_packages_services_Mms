@@ -151,9 +151,9 @@ public class MmsRequestRoboTest {
     public void downloadRequest_noSatellite_downloadSuccessful() {
         doReturn(150L).when(mSmsManager).getWapMessageSize(sFakeUri);
         DownloadRequest request = new DownloadRequest(mMmsService, mSubId, sFakeUri,
-                Uri.parse(sFakeUri), /* downloadIntent= */ null, /* callingPkg= */ null,
-                mCarrierConfigValues, /* context= */ mMmsService, sFakeMessageId, mMmsStats,
-                mTelephonyManager);
+                Uri.parse(sFakeUri), /* downloadIntent= */ null, CALLING_USER,
+                /* callingPkg= */ null, mCarrierConfigValues, /* context= */ mMmsService,
+                sFakeMessageId, mMmsStats, mTelephonyManager);
 
         boolean okToDownload = request.canTransferPayloadOnCurrentNetwork();
 
